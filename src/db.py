@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 from typing import Any
@@ -42,14 +43,35 @@ REVIEW_COLUMNS = [
 
 STORAGE_BUCKET = "review-images"
 LOCAL_UPLOAD_DIR = Path("uploads")
+NUMERIC_COLUMNS = {
+    "latitude",
+    "longitude",
+    "price",
+    "sweetness",
+    "acidity",
+    "aroma",
+    "texture",
+    "mango_intensity",
+    "value_for_money",
+    "final_score",
+}
+HALF_POINT_COLUMNS = {
+    "sweetness",
+    "acidity",
+    "aroma",
+    "texture",
+    "mango_intensity",
+    "value_for_money",
+    "final_score",
+}
 
 
 @st.cache_resource(show_spinner=False)
 def _create_supabase_client(supabase_url: str, supabase_key: str) -> Client | None:
     try:
         return create_client(supabase_url, supabase_key)
-    except Exception as exc:
-        st.error(f"Could not create Supabase client: {exc}")
+    except Exception:
+        st.error("Could not connect to Supabase. Check the configured URL and key.")
         return None
 
 
@@ -61,8 +83,16 @@ def get_supabase_client() -> Client | None:
     return _create_supabase_client(settings.supabase_url, settings.supabase_key)
 
 
+def get_admin_supabase_client() -> Client | None:
+    settings = get_settings()
+    if not settings.has_admin_credentials:
+        return None
+
+    return _create_supabase_client(settings.supabase_url, settings.supabase_service_role_key)
+
+
 @st.cache_data(ttl=60, show_spinner=False)
-def _load_reviews_cached(credential_signature: str) -> tuple[pd.DataFrame, str | None]:
+def _load_reviews_cached(credential_signature: str, public_only: bool = True) -> tuple[pd.DataFrame, str | None]:
     _ = credential_signature
     client = get_supabase_client()
     if client is None:
@@ -71,15 +101,12 @@ def _load_reviews_cached(credential_signature: str) -> tuple[pd.DataFrame, str |
         )
 
     try:
-        response = (
-            client.table("reviews")
-            .select("*")
-            .eq("public", True)
-            .order("final_score", desc=True)
-            .execute()
-        )
+        query = client.table("reviews").select("*").order("final_score", desc=True)
+        if public_only:
+            query = query.eq("public", True)
+        response = query.execute()
     except Exception as exc:
-        return pd.DataFrame(columns=REVIEW_COLUMNS), f"Could not load reviews: {exc}"
+        return pd.DataFrame(columns=REVIEW_COLUMNS), _human_error(exc, "load reviews")
 
     records = response.data or []
     if not records:
@@ -90,25 +117,16 @@ def _load_reviews_cached(credential_signature: str) -> tuple[pd.DataFrame, str |
         if column not in df.columns:
             df[column] = None
 
-    numeric_columns = [
-        "latitude",
-        "longitude",
-        "price",
-        "sweetness",
-        "acidity",
-        "aroma",
-        "texture",
-        "mango_intensity",
-        "value_for_money",
-        "final_score",
-    ]
-    for column in numeric_columns:
+    for column in NUMERIC_COLUMNS:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
     return df[REVIEW_COLUMNS], None
 
 
-def load_reviews() -> tuple[pd.DataFrame, str | None]:
+def get_reviews(public_only: bool = True) -> tuple[pd.DataFrame, str | None]:
+    if not public_only:
+        return get_admin_reviews()
+
     settings = get_settings()
     if not settings.has_supabase_credentials:
         status = get_config_status()
@@ -119,29 +137,156 @@ def load_reviews() -> tuple[pd.DataFrame, str | None]:
             f"from {status['SUPABASE_KEY_SOURCE']}."
         )
 
-    return _load_reviews_cached(settings.credential_signature)
+    return _load_reviews_cached(settings.credential_signature, public_only)
+
+
+def load_reviews() -> tuple[pd.DataFrame, str | None]:
+    return get_reviews(public_only=True)
+
+
+def get_admin_reviews() -> tuple[pd.DataFrame, str | None]:
+    settings = get_settings()
+    if not settings.has_admin_credentials:
+        return pd.DataFrame(columns=REVIEW_COLUMNS), (
+            "Admin writes are not configured. Add SUPABASE_SERVICE_ROLE_KEY to .env "
+            "locally or Streamlit secrets in deployment."
+        )
+
+    client = get_admin_supabase_client()
+    if client is None:
+        return pd.DataFrame(columns=REVIEW_COLUMNS), "Admin Supabase client could not be created."
+
+    try:
+        response = client.table("reviews").select("*").order("created_at", desc=True).execute()
+    except Exception as exc:
+        return pd.DataFrame(columns=REVIEW_COLUMNS), _human_error(exc, "load reviews")
+
+    records = response.data or []
+    if not records:
+        return pd.DataFrame(columns=REVIEW_COLUMNS), None
+
+    df = pd.DataFrame(records)
+    for column in REVIEW_COLUMNS:
+        if column not in df.columns:
+            df[column] = None
+
+    for column in NUMERIC_COLUMNS:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    return df[REVIEW_COLUMNS], None
+
+
+def _normalize_insert_value(key: str, value: Any) -> Any:
+    if key not in NUMERIC_COLUMNS or value is None:
+        return value
+
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+
+    return value
+
+
+def _clean_review_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: _normalize_insert_value(key, value)
+        for key, value in payload.items()
+        if key in REVIEW_COLUMNS and key not in {"id", "created_at"} and value != ""
+    }
+
+
+def _is_integer_schema_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "22p02" in message and "integer" in message
+
+
+def _integer_schema_message() -> str:
+    columns = ", ".join(sorted(HALF_POINT_COLUMNS))
+    return (
+        "Could not add review because the Supabase table still has integer score columns. "
+        "Half-point scores need numeric columns. In Supabase SQL Editor, convert these "
+        f"columns to numeric: {columns}."
+    )
+
+
+def _human_error(exc: Exception, action: str) -> str:
+    raw_message = str(exc)
+    details: dict[str, Any] = {}
+    try:
+        parsed = ast.literal_eval(raw_message)
+        if isinstance(parsed, dict):
+            details = parsed
+    except (SyntaxError, ValueError):
+        details = {}
+
+    code = details.get("code")
+    message = str(details.get("message") or raw_message).strip()
+
+    if code == "42501" or "row-level security" in message.lower():
+        return (
+            f"Could not {action} because Supabase blocked the admin write. "
+            "Check that SUPABASE_SERVICE_ROLE_KEY is configured correctly."
+        )
+
+    if code == "22P02" or "invalid input syntax" in message.lower():
+        return f"Could not {action} because one field has a value the database cannot store."
+
+    if action == "load reviews":
+        return "Could not load reviews right now. Check the Supabase connection and read policy."
+
+    return f"Could not {action}. Please check the Supabase configuration and try again."
 
 
 def insert_review(payload: dict[str, Any]) -> tuple[bool, str]:
-    client = get_supabase_client()
+    client = get_admin_supabase_client()
     if client is None:
-        return False, "Supabase credentials are missing."
+        return False, "Admin writes are not configured. Add SUPABASE_SERVICE_ROLE_KEY."
 
     if payload.get("final_score") in (None, ""):
         payload["final_score"] = calculate_final_score(payload)
 
-    cleaned_payload = {
-        key: value
-        for key, value in payload.items()
-        if key in REVIEW_COLUMNS and key not in {"id", "created_at"} and value not in ("", None)
-    }
+    cleaned_payload = _clean_review_payload(payload)
 
     try:
         client.table("reviews").insert(cleaned_payload).execute()
         _load_reviews_cached.clear()
         return True, "Review added."
     except Exception as exc:
-        return False, f"Could not add review: {exc}"
+        if _is_integer_schema_error(exc):
+            return False, _integer_schema_message()
+        return False, _human_error(exc, "add review")
+
+
+def update_review(review_id: str, payload: dict[str, Any]) -> tuple[bool, str]:
+    client = get_admin_supabase_client()
+    if client is None:
+        return False, "Admin writes are not configured. Add SUPABASE_SERVICE_ROLE_KEY."
+
+    if payload.get("final_score") in (None, ""):
+        payload["final_score"] = calculate_final_score(payload)
+
+    cleaned_payload = _clean_review_payload(payload)
+
+    try:
+        client.table("reviews").update(cleaned_payload).eq("id", review_id).execute()
+        _load_reviews_cached.clear()
+        return True, "Review updated."
+    except Exception as exc:
+        if _is_integer_schema_error(exc):
+            return False, _integer_schema_message()
+        return False, _human_error(exc, "update review")
+
+
+def delete_review(review_id: str) -> tuple[bool, str]:
+    client = get_admin_supabase_client()
+    if client is None:
+        return False, "Admin writes are not configured. Add SUPABASE_SERVICE_ROLE_KEY."
+
+    try:
+        client.table("reviews").delete().eq("id", review_id).execute()
+        _load_reviews_cached.clear()
+        return True, "Review deleted."
+    except Exception as exc:
+        return False, _human_error(exc, "delete review")
 
 
 def _safe_upload_name(filename: str) -> str:
@@ -184,7 +329,7 @@ def upload_review_image(uploaded_file: Any) -> tuple[bool, str | None, str | Non
     if not data:
         return False, None, "The uploaded image appears to be empty."
 
-    client = get_supabase_client()
+    client = get_admin_supabase_client()
     if client is None:
         ok, path, message = _save_uploaded_image_locally(file_name, data)
         return ok, path, message
@@ -205,10 +350,11 @@ def upload_review_image(uploaded_file: Any) -> tuple[bool, str | None, str | Non
             ok, path, message = _save_uploaded_image_locally(file_name, data)
             if ok:
                 return True, path, (
-                    f"Supabase Storage upload failed, so the image was saved locally for development. Details: {exc}"
+                    "Image saved locally for development because cloud storage was not available."
                 )
             return False, None, message
         except Exception as local_exc:
+            _ = local_exc
             return False, None, (
-                f"Image upload failed. Supabase Storage error: {exc}. Local fallback error: {local_exc}."
+                "We could not attach the uploaded image. You can save the review without an image."
             )

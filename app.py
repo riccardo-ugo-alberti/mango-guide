@@ -1,6 +1,21 @@
 from __future__ import annotations
 
+import os
+
 import streamlit as st
+
+
+def _debug_enabled() -> bool:
+    try:
+        raw_value = st.secrets.get("DEBUG", os.getenv("DEBUG", ""))
+    except Exception:
+        raw_value = os.getenv("DEBUG", "")
+
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+debug_enabled = _debug_enabled()
+st.set_option("client.showErrorDetails", "full" if debug_enabled else "none")
 
 
 pages = [
@@ -14,4 +29,4 @@ pages = [
 
 
 navigation = st.navigation(pages)
-navigation.run()
+_ = navigation.run()

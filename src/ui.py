@@ -341,6 +341,13 @@ def score_label(score: object) -> tuple[str, str]:
     return "Disappointing", "score-disappointing"
 
 
+def score_text(score: object) -> str:
+    label, _ = score_label(score)
+    if pd.isna(score):
+        return "Score N/A - Not scored"
+    return f"Score {float(score):.1f} - {label}"
+
+
 def score_badge(score: object, compact: bool = False) -> str:
     label, class_name = score_label(score)
     score_text = "N/A" if pd.isna(score) else f"{float(score):.1f}"
@@ -353,7 +360,12 @@ def _has_value(value: object) -> bool:
         return False
     if pd.isna(value):
         return False
-    return bool(str(value).strip())
+    text = str(value).strip()
+    return bool(text and text.lower() != "nan")
+
+
+def _display_value(value: object, fallback: str) -> str:
+    return str(value).strip() if _has_value(value) else fallback
 
 
 def build_google_maps_url(
@@ -372,7 +384,7 @@ def build_google_maps_url(
             return f"https://www.google.com/maps/search/?api=1&query={lat:.6f},{lon:.6f}"
 
     query_bits = [str(bit).strip() for bit in (place_name, city) if _has_value(bit)]
-    if len(query_bits) >= 2:
+    if query_bits:
         return f"https://www.google.com/maps/search/?api=1&query={quote_plus(', '.join(query_bits))}"
 
     return None
@@ -406,45 +418,40 @@ def empty_state(title: str, body: str, icon: str | None = None) -> None:
 
 
 def mango_card(row: pd.Series, rank: int | None = None, show_image: bool = False) -> None:
-    title = row.get("name") or "Untitled tasting"
+    title = _display_value(row.get("name"), "Untitled tasting")
     score = row.get("final_score")
-    place_bits = [row.get("place_name"), row.get("city")]
-    place = ", ".join(str(bit) for bit in place_bits if pd.notna(bit) and bit)
-    mango_origin = row.get("country")
+    place_bits = [_display_value(row.get("place_name"), ""), _display_value(row.get("city"), "")]
+    place = ", ".join(bit for bit in place_bits if bit)
     rank_label = f"No. {rank} " if rank is not None else ""
     image_url = row.get("image_url")
-    image_html = ""
-    if show_image and pd.notna(image_url) and str(image_url).strip() and not _is_local_image_path(str(image_url)):
-        image_html = f'<img src="{escape(str(image_url), quote=True)}" alt="{escape(str(title), quote=True)}">'
     maps_url = build_google_maps_url(
         row.get("latitude"),
         row.get("longitude"),
         row.get("place_name"),
         row.get("city"),
     )
-    maps_html = (
-        f'<a class="maps-link" href="{escape(maps_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
-        "Open in Google Maps</a>"
-        if maps_url
-        else ""
-    )
 
-    st.markdown(
-        f"""
-        <div class="mango-card">
-            {image_html}
-            <div class="title">{escape(rank_label + str(title))}</div>
-            <div class="meta">Category: {escape(str(row.get("category") or "Unspecified"))}</div>
-            <div class="meta">Location: {escape(place or "Not recorded")}</div>
-            <div class="meta">Mango origin: {escape(str(mango_origin) if _has_value(mango_origin) else "Unknown")}</div>
-            {score_badge(score)}
-            <p class="note">{escape(str(row.get("short_review") or "No notes recorded."))}</p>
-            {maps_html}
-            <div class="meta">Tasted by {escape(str(row.get("reviewer") or "Unknown reviewer"))}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    with st.container(border=True):
+        if show_image and _has_value(image_url) and not _is_local_image_path(str(image_url)):
+            st.image(str(image_url), use_container_width=True)
+        st.markdown(f"**{rank_label}{title}**")
+        category = _display_value(row.get("category"), "")
+        if category:
+            st.caption(f"Category: {category}")
+        st.markdown(f"`{score_text(score)}`")
+        note = _display_value(row.get("short_review"), "")
+        if note:
+            st.write(note)
+        if place:
+            st.caption(f"Location: {place}")
+        mango_origin = _display_value(row.get("country"), "")
+        if mango_origin:
+            st.caption(f"Mango origin: {mango_origin}")
+        reviewer = _display_value(row.get("reviewer"), "")
+        if reviewer:
+            st.caption(f"Tasted by {reviewer}")
+        if maps_url:
+            st.link_button("Open in Google Maps", maps_url)
 
 
 def review_card(row: pd.Series, rank: int | None = None) -> None:
@@ -456,43 +463,24 @@ def _is_local_image_path(image_url: str) -> bool:
 
 
 def gallery_card(row: pd.Series) -> None:
-    title = row.get("name") or "Untitled tasting"
+    title = _display_value(row.get("name"), "Untitled tasting")
     image_url = str(row.get("image_url") or "")
-    location = " ".join(str(bit) for bit in [row.get("place_name"), row.get("city")] if pd.notna(bit) and bit)
-    mango_origin = row.get("country")
-    location_label = location or "Location not recorded"
-    if _has_value(mango_origin):
-        location_label = f"{location_label} - Mango origin: {mango_origin}"
-
-    if _is_local_image_path(image_url) and Path(image_url).exists():
-        st.image(image_url, use_container_width=True)
-        st.markdown(
-            f"""
-            <div class="gallery-card">
-                <div class="body">
-                    <strong>{escape(str(title))}</strong>
-                    <div style="margin: 0.45rem 0;">{score_badge(row.get("final_score"), compact=True)}</div>
-                    <div class="muted">{escape(location_label)}</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        return
-
-    st.markdown(
-        f"""
-        <div class="gallery-card">
-            <img src="{escape(image_url, quote=True)}" alt="{escape(str(title), quote=True)}">
-            <div class="body">
-                <strong>{escape(str(title))}</strong>
-                <div style="margin: 0.45rem 0;">{score_badge(row.get("final_score"), compact=True)}</div>
-                <div class="muted">{escape(location_label)}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    location = ", ".join(
+        bit for bit in [_display_value(row.get("place_name"), ""), _display_value(row.get("city"), "")] if bit
     )
+
+    with st.container(border=True):
+        if _is_local_image_path(image_url) and Path(image_url).exists():
+            st.image(image_url, use_container_width=True)
+        elif _has_value(image_url):
+            st.image(image_url, use_container_width=True)
+        st.markdown(f"**{title}**")
+        st.caption(score_text(row.get("final_score")))
+        if location:
+            st.caption(location)
+        mango_origin = _display_value(row.get("country"), "")
+        if mango_origin:
+            st.caption(f"Mango origin: {mango_origin}")
 
 
 def _image_data_uri(image_path: Path) -> str | None:
@@ -527,17 +515,11 @@ def mango_variety_card(name: str, description: str, image_path: str | Path) -> N
 
 
 def score_panel(score: float | None) -> None:
-    score_text = "N/A" if score is None else f"{score:.1f}"
-    st.markdown(
-        f"""
-        <div class="score-panel">
-            <div class="muted">Calculated score</div>
-            <div class="score-number">{escape(score_text)}</div>
-            <div>{score_badge(score)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    value_text = "N/A" if score is None else f"{score:.1f}"
+    with st.container(border=True):
+        st.caption("Calculated score")
+        st.metric("Score", value_text)
+        st.caption(score_text(score))
 
 
 def filtered_reviews(df: pd.DataFrame) -> pd.DataFrame:

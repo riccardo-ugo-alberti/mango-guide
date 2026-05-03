@@ -16,6 +16,7 @@ load_dotenv(Path.cwd() / ".env", override=False)
 class Settings:
     supabase_url: str | None
     supabase_key: str | None
+    supabase_service_role_key: str | None
     app_password: str | None
     supabase_key_source: str | None = None
 
@@ -24,8 +25,17 @@ class Settings:
         return bool(self.supabase_url and self.supabase_key)
 
     @property
+    def has_admin_credentials(self) -> bool:
+        return bool(self.supabase_url and self.supabase_service_role_key)
+
+    @property
     def credential_signature(self) -> str:
         raw_value = f"{self.supabase_url or ''}:{self.supabase_key or ''}"
+        return sha256(raw_value.encode("utf-8")).hexdigest()[:12]
+
+    @property
+    def admin_credential_signature(self) -> str:
+        raw_value = f"{self.supabase_url or ''}:{self.supabase_service_role_key or ''}"
         return sha256(raw_value.encode("utf-8")).hexdigest()[:12]
 
 
@@ -65,6 +75,7 @@ def get_settings() -> Settings:
     return Settings(
         supabase_url=get_setting("SUPABASE_URL"),
         supabase_key=supabase_key,
+        supabase_service_role_key=get_setting("SUPABASE_SERVICE_ROLE_KEY"),
         app_password=get_setting("APP_PASSWORD"),
         supabase_key_source=supabase_key_source,
     )
@@ -84,6 +95,7 @@ def get_config_status() -> dict[str, str]:
         "SUPABASE_URL": "set" if settings.supabase_url else "missing",
         "SUPABASE_KEY": mask_secret(settings.supabase_key),
         "SUPABASE_KEY_SOURCE": settings.supabase_key_source or "missing",
+        "SUPABASE_SERVICE_ROLE_KEY": "set" if settings.supabase_service_role_key else "missing",
         "APP_PASSWORD": "set" if settings.app_password else "missing",
     }
 

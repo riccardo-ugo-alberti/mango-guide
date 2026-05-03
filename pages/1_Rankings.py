@@ -61,6 +61,7 @@ display["Google Maps"] = filtered.apply(
     lambda row: build_google_maps_url(row.get("latitude"), row.get("longitude"), row.get("place_name"), row.get("city")),
     axis=1,
 )
+display = display.fillna("")
 st.dataframe(
     display,
     use_container_width=True,

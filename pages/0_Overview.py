@@ -43,6 +43,15 @@ MANGO_VARIETIES = [
 
 configure_page("Mango Guide")
 
+
+def display_value(value: object, fallback: str) -> str:
+    if value is None or pd.isna(value):
+        return fallback
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return fallback
+    return text
+
 hero(
     "Mango Guide",
     "A small private guide to mango-led tastings, from fresh fruit to gelato, sorbet, desserts, drinks, and savory dishes.",
@@ -55,7 +64,7 @@ if error:
     st.warning(error)
 
 if df.empty:
-    empty_state("No tasting notes yet", "Add the first review to begin the guide.")
+    empty_state("No tasting notes yet", "The guide is ready. Add the first public review from the admin page.")
 else:
     total_reviews = len(df)
     average_score = df["final_score"].mean()
@@ -120,8 +129,8 @@ if not df.empty:
         for _, row in recent.iterrows():
             score = row.get("final_score")
             score_text = f"{score:.1f}" if pd.notna(score) else "N/A"
-            st.markdown(f"**{row.get('name') or 'Untitled'}**")
-            st.caption(f"Score {score_text} - {row.get('short_review') or 'No notes recorded.'}")
+            st.markdown(f"**{display_value(row.get('name'), 'Untitled')}**")
+            st.caption(f"Score {score_text} - {display_value(row.get('short_review'), 'No notes recorded.')}")
 
     st.subheader("Guide Sections")
     nav1, nav2, nav3 = st.columns(3)

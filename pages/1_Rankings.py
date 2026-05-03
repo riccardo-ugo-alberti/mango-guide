@@ -3,7 +3,15 @@ from __future__ import annotations
 import streamlit as st
 
 from src.db import load_reviews
-from src.ui import configure_page, empty_state, filtered_reviews, mango_card, page_title, show_data_notice
+from src.ui import (
+    build_google_maps_url,
+    configure_page,
+    empty_state,
+    filtered_reviews,
+    mango_card,
+    page_title,
+    show_data_notice,
+)
 
 
 configure_page("Rankings")
@@ -41,12 +49,21 @@ display = filtered[columns].rename(
     columns={
         "name": "Name",
         "category": "Category",
-        "country": "Origin",
+        "country": "Mango origin",
         "city": "City",
-        "place_name": "Place",
+        "place_name": "Address / Place",
         "reviewer": "Tasted by",
         "final_score": "Score",
         "would_eat_again": "Would taste again",
     }
 )
-st.dataframe(display, use_container_width=True, hide_index=True)
+display["Google Maps"] = filtered.apply(
+    lambda row: build_google_maps_url(row.get("latitude"), row.get("longitude"), row.get("place_name"), row.get("city")),
+    axis=1,
+)
+st.dataframe(
+    display,
+    use_container_width=True,
+    hide_index=True,
+    column_config={"Google Maps": st.column_config.LinkColumn("Google Maps", display_text="Open")},
+)

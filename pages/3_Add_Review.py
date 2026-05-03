@@ -36,16 +36,45 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="section-panel">', unsafe_allow_html=True)
 st.subheader("Location")
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
-    country = st.text_input("Origin")
-    city = st.text_input("City")
+    city = st.text_input(
+        "City",
+        help="Where the tasting took place.",
+        placeholder="Milan",
+    )
 with col2:
-    place_name = st.text_input("Place")
-    latitude = st.number_input("Latitude", value=None, format="%.6f", placeholder="Optional")
-with col3:
-    longitude = st.number_input("Longitude", value=None, format="%.6f", placeholder="Optional")
-    public = st.checkbox("Public", value=True)
+    place_name = st.text_input(
+        "Address / Place",
+        help="Gelateria, market, restaurant, shop, address, or home tasting.",
+        placeholder="Gelateria, market, restaurant, shop, address, or home",
+    )
+
+country = st.text_input(
+    "Mango origin",
+    help="Optional. Origin of the mango itself, if known.",
+    placeholder="India, Pakistan, Mexico, Peru, Thailand, Unknown",
+)
+
+coord_col1, coord_col2 = st.columns(2)
+with coord_col1:
+    latitude = st.number_input(
+        "Latitude",
+        value=None,
+        format="%.6f",
+        placeholder="Optional",
+        help="Optional, but required to display the review on the map.",
+    )
+with coord_col2:
+    longitude = st.number_input(
+        "Longitude",
+        value=None,
+        format="%.6f",
+        placeholder="Optional",
+        help="Optional, but required to display the review on the map.",
+    )
+public = st.checkbox("Public", value=True)
+st.caption("Tip: to find coordinates, open the place in Google Maps, right-click on the map, and copy latitude and longitude.")
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="section-panel">', unsafe_allow_html=True)

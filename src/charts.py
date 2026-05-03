@@ -27,10 +27,17 @@ def category_chart(df: pd.DataFrame) -> go.Figure:
 
 def country_chart(df: pd.DataFrame) -> go.Figure:
     if df.empty or "country" not in df:
-        return _empty_figure("No country data yet.")
+        return _empty_figure("No mango origin data yet.")
     counts = df["country"].fillna("Unknown").value_counts().head(12).reset_index()
-    counts.columns = ["country", "reviews"]
-    fig = px.bar(counts, x="reviews", y="country", orientation="h", color="reviews", color_continuous_scale="Brwnyl")
+    counts.columns = ["mango_origin", "reviews"]
+    fig = px.bar(
+        counts,
+        x="reviews",
+        y="mango_origin",
+        orientation="h",
+        color="reviews",
+        color_continuous_scale="Brwnyl",
+    )
     fig.update_layout(coloraxis_showscale=False, xaxis_title="Reviews", yaxis_title="", template="plotly_white")
     return fig
 

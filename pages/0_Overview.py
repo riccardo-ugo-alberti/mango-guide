@@ -61,7 +61,7 @@ else:
     average_score = df["final_score"].mean()
     scored = df.dropna(subset=["final_score"]).sort_values("final_score", ascending=False)
     best_review = scored.iloc[0] if not scored.empty else None
-    country_count = df["country"].dropna().nunique()
+    origin_count = df["country"].dropna().nunique()
     image_count = df["image_url"].dropna().astype(str).str.len().gt(0).sum()
 
     col1, col2, col3, col4 = st.columns(4)
@@ -70,7 +70,7 @@ else:
     with col2:
         metric_card("Average score", f"{average_score:.2f}" if pd.notna(average_score) else "N/A", "Out of 10")
     with col3:
-        metric_card("Origins", country_count, "Countries recorded")
+        metric_card("Mango origins", origin_count, "Origins recorded")
     with col4:
         metric_card("Images", image_count, "Visual records")
 
@@ -128,6 +128,6 @@ if not df.empty:
     with nav1:
         empty_state("Rankings", "Compare tasting notes by score.")
     with nav2:
-        empty_state("Map", "View recorded origins and places.")
+        empty_state("Map", "View recorded tasting places.")
     with nav3:
         empty_state("Gallery", "Browse image-backed reviews.")

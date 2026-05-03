@@ -4,6 +4,7 @@ import base64
 from html import escape
 import mimetypes
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import pandas as pd
 import streamlit as st
@@ -147,6 +148,16 @@ def inject_style() -> None:
             color: var(--charcoal);
             margin: 0;
             line-height: 1.55;
+        }
+        .maps-link {
+            color: var(--mango-muted);
+            font-size: 0.86rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .maps-link:hover {
+            color: var(--brown);
+            text-decoration: underline;
         }
         .score-badge {
             display: inline-flex;
@@ -337,6 +348,36 @@ def score_badge(score: object, compact: bool = False) -> str:
     return f'<span class="score-badge {class_name}">{escape(text)}</span>'
 
 
+def _has_value(value: object) -> bool:
+    if value is None:
+        return False
+    if pd.isna(value):
+        return False
+    return bool(str(value).strip())
+
+
+def build_google_maps_url(
+    latitude: object = None,
+    longitude: object = None,
+    place_name: object = None,
+    city: object = None,
+) -> str | None:
+    if _has_value(latitude) and _has_value(longitude):
+        try:
+            lat = float(latitude)
+            lon = float(longitude)
+        except (TypeError, ValueError):
+            pass
+        else:
+            return f"https://www.google.com/maps/search/?api=1&query={lat:.6f},{lon:.6f}"
+
+    query_bits = [str(bit).strip() for bit in (place_name, city) if _has_value(bit)]
+    if len(query_bits) >= 2:
+        return f"https://www.google.com/maps/search/?api=1&query={quote_plus(', '.join(query_bits))}"
+
+    return None
+
+
 def metric_card(label: str, value: object, hint: str | None = None) -> None:
     hint_html = f'<div class="hint">{escape(str(hint))}</div>' if hint else ""
     st.markdown(
@@ -367,13 +408,26 @@ def empty_state(title: str, body: str, icon: str | None = None) -> None:
 def mango_card(row: pd.Series, rank: int | None = None, show_image: bool = False) -> None:
     title = row.get("name") or "Untitled tasting"
     score = row.get("final_score")
-    place_bits = [row.get("place_name"), row.get("city"), row.get("country")]
+    place_bits = [row.get("place_name"), row.get("city")]
     place = ", ".join(str(bit) for bit in place_bits if pd.notna(bit) and bit)
+    mango_origin = row.get("country")
     rank_label = f"No. {rank} " if rank is not None else ""
     image_url = row.get("image_url")
     image_html = ""
     if show_image and pd.notna(image_url) and str(image_url).strip() and not _is_local_image_path(str(image_url)):
         image_html = f'<img src="{escape(str(image_url), quote=True)}" alt="{escape(str(title), quote=True)}">'
+    maps_url = build_google_maps_url(
+        row.get("latitude"),
+        row.get("longitude"),
+        row.get("place_name"),
+        row.get("city"),
+    )
+    maps_html = (
+        f'<a class="maps-link" href="{escape(maps_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
+        "Open in Google Maps</a>"
+        if maps_url
+        else ""
+    )
 
     st.markdown(
         f"""
@@ -381,9 +435,11 @@ def mango_card(row: pd.Series, rank: int | None = None, show_image: bool = False
             {image_html}
             <div class="title">{escape(rank_label + str(title))}</div>
             <div class="meta">Category: {escape(str(row.get("category") or "Unspecified"))}</div>
-            <div class="meta">Origin: {escape(place or "Not recorded")}</div>
+            <div class="meta">Location: {escape(place or "Not recorded")}</div>
+            <div class="meta">Mango origin: {escape(str(mango_origin) if _has_value(mango_origin) else "Unknown")}</div>
             {score_badge(score)}
             <p class="note">{escape(str(row.get("short_review") or "No notes recorded."))}</p>
+            {maps_html}
             <div class="meta">Tasted by {escape(str(row.get("reviewer") or "Unknown reviewer"))}</div>
         </div>
         """,
@@ -402,7 +458,11 @@ def _is_local_image_path(image_url: str) -> bool:
 def gallery_card(row: pd.Series) -> None:
     title = row.get("name") or "Untitled tasting"
     image_url = str(row.get("image_url") or "")
-    location = " ".join(str(bit) for bit in [row.get("city"), row.get("country")] if pd.notna(bit) and bit)
+    location = " ".join(str(bit) for bit in [row.get("place_name"), row.get("city")] if pd.notna(bit) and bit)
+    mango_origin = row.get("country")
+    location_label = location or "Location not recorded"
+    if _has_value(mango_origin):
+        location_label = f"{location_label} - Mango origin: {mango_origin}"
 
     if _is_local_image_path(image_url) and Path(image_url).exists():
         st.image(image_url, use_container_width=True)
@@ -412,7 +472,7 @@ def gallery_card(row: pd.Series) -> None:
                 <div class="body">
                     <strong>{escape(str(title))}</strong>
                     <div style="margin: 0.45rem 0;">{score_badge(row.get("final_score"), compact=True)}</div>
-                    <div class="muted">{escape(location or "Origin not recorded")}</div>
+                    <div class="muted">{escape(location_label)}</div>
                 </div>
             </div>
             """,
@@ -427,7 +487,7 @@ def gallery_card(row: pd.Series) -> None:
             <div class="body">
                 <strong>{escape(str(title))}</strong>
                 <div style="margin: 0.45rem 0;">{score_badge(row.get("final_score"), compact=True)}</div>
-                <div class="muted">{escape(location or "Origin not recorded")}</div>
+                <div class="muted">{escape(location_label)}</div>
             </div>
         </div>
         """,
@@ -489,7 +549,7 @@ def filtered_reviews(df: pd.DataFrame) -> pd.DataFrame:
         category = st.selectbox("Category", ["All"] + categories)
     with cols[1]:
         countries = sorted(value for value in filtered["country"].dropna().unique())
-        country = st.selectbox("Origin", ["All"] + countries)
+        country = st.selectbox("Mango origin", ["All"] + countries)
     with cols[2]:
         reviewers = sorted(value for value in filtered["reviewer"].dropna().unique())
         reviewer = st.selectbox("Tasted by", ["All"] + reviewers)

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pandas as pd
 import streamlit as st
@@ -36,6 +39,9 @@ REVIEW_COLUMNS = [
     "would_eat_again",
     "public",
 ]
+
+STORAGE_BUCKET = "review-images"
+LOCAL_UPLOAD_DIR = Path("uploads")
 
 
 @st.cache_resource(show_spinner=False)
@@ -136,3 +142,73 @@ def insert_review(payload: dict[str, Any]) -> tuple[bool, str]:
         return True, "Review added."
     except Exception as exc:
         return False, f"Could not add review: {exc}"
+
+
+def _safe_upload_name(filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        suffix = ".jpg"
+
+    stem = Path(filename).stem.lower()
+    stem = re.sub(r"[^a-z0-9]+", "-", stem).strip("-") or "review-image"
+    return f"{stem}-{uuid4().hex[:12]}{suffix}"
+
+
+def _content_type(filename: str, fallback: str | None = None) -> str:
+    if fallback:
+        return fallback
+
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".png":
+        return "image/png"
+    if suffix == ".webp":
+        return "image/webp"
+    return "image/jpeg"
+
+
+def _save_uploaded_image_locally(file_name: str, data: bytes) -> tuple[bool, str, str]:
+    LOCAL_UPLOAD_DIR.mkdir(exist_ok=True)
+    local_path = LOCAL_UPLOAD_DIR / file_name
+    local_path.write_bytes(data)
+    return True, str(local_path).replace("\\", "/"), (
+        "Image saved locally for development. Configure Supabase Storage before deploying uploads publicly."
+    )
+
+
+def upload_review_image(uploaded_file: Any) -> tuple[bool, str | None, str | None]:
+    if uploaded_file is None:
+        return True, None, None
+
+    file_name = _safe_upload_name(uploaded_file.name)
+    data = uploaded_file.getvalue()
+    if not data:
+        return False, None, "The uploaded image appears to be empty."
+
+    client = get_supabase_client()
+    if client is None:
+        ok, path, message = _save_uploaded_image_locally(file_name, data)
+        return ok, path, message
+
+    storage_path = f"reviews/{file_name}"
+    try:
+        client.storage.from_(STORAGE_BUCKET).upload(
+            storage_path,
+            data,
+            {"content-type": _content_type(file_name, getattr(uploaded_file, "type", None))},
+        )
+        public_url = client.storage.from_(STORAGE_BUCKET).get_public_url(storage_path)
+        if not public_url:
+            return False, None, "Image uploaded, but Supabase did not return a public URL."
+        return True, public_url, None
+    except Exception as exc:
+        try:
+            ok, path, message = _save_uploaded_image_locally(file_name, data)
+            if ok:
+                return True, path, (
+                    f"Supabase Storage upload failed, so the image was saved locally for development. Details: {exc}"
+                )
+            return False, None, message
+        except Exception as local_exc:
+            return False, None, (
+                f"Image upload failed. Supabase Storage error: {exc}. Local fallback error: {local_exc}."
+            )

@@ -99,7 +99,7 @@ DEFAULT_CATEGORIES = [
 ]
 
 
-REVIEWERS = ["Reviewer 1", "Reviewer 2"]
+REVIEWERS = ["Paolo", "Riccardo"]
 
 
 CURRENCIES = ["EUR", "USD", "GBP", "THB", "INR", "JPY", "MXN", "BRL", "AUD", "CAD"]

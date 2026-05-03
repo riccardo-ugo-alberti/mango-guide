@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import base64
 from html import escape
+import mimetypes
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 
 def configure_page(title: str = "Mango Guide") -> None:
-    st.set_page_config(page_title=title, page_icon="🥭", layout="wide")
+    st.set_page_config(page_title=title, page_icon="MG", layout="wide")
     inject_style()
 
 
@@ -16,208 +19,254 @@ def inject_style() -> None:
         """
         <style>
         :root {
-            --mango: #f4b000;
-            --mango-deep: #c76a00;
-            --leaf: #2f9e44;
-            --leaf-soft: #dff5df;
-            --sunset: #ff7a1a;
-            --ink: #2b2118;
-            --muted: #74665b;
-            --cream: #fff8e8;
-            --paper: rgba(255, 255, 255, 0.9);
+            --ivory: #fbf7ef;
+            --sand: #e7dac7;
+            --sand-soft: #f4ecdf;
+            --mango: #c99535;
+            --mango-muted: #b88732;
+            --brown: #342820;
+            --charcoal: #252322;
+            --muted: #756a60;
+            --line: rgba(52, 40, 32, 0.14);
+            --paper: rgba(255, 252, 246, 0.92);
         }
         .stApp {
             background:
-                radial-gradient(circle at top left, rgba(244, 176, 0, 0.18), transparent 30rem),
-                radial-gradient(circle at 90% 12%, rgba(47, 158, 68, 0.10), transparent 22rem),
-                linear-gradient(180deg, #fffaf0 0%, #ffffff 48%, #f7fff4 100%);
-            color: var(--ink);
+                linear-gradient(180deg, #fbf7ef 0%, #fffdf8 46%, #f7f1e7 100%);
+            color: var(--charcoal);
         }
         .block-container {
-            max-width: 1180px;
-            padding-top: 2rem;
-            padding-bottom: 4rem;
-        }
-        h1, h2, h3 {
-            color: var(--ink);
-            letter-spacing: 0;
+            max-width: 1120px;
+            padding-top: 2.4rem;
+            padding-bottom: 5rem;
         }
         section[data-testid="stSidebar"] {
-            background: #fff8e8;
-            border-right: 1px solid rgba(199, 106, 0, 0.14);
+            background: #f4ecdf;
+            border-right: 1px solid var(--line);
+        }
+        section[data-testid="stSidebar"] * {
+            letter-spacing: 0;
+        }
+        h1, h2, h3 {
+            color: var(--brown);
+            letter-spacing: 0;
+            font-weight: 650;
+        }
+        h1 {
+            font-size: clamp(2.25rem, 5vw, 4.2rem);
+            line-height: 0.98;
+        }
+        h2 {
+            margin-top: 1.8rem;
+        }
+        p, label, .stMarkdown, [data-testid="stCaptionContainer"] {
+            color: var(--charcoal);
         }
         .mango-hero {
-            border: 1px solid rgba(199, 106, 0, 0.18);
-            border-radius: 8px;
-            padding: clamp(1.2rem, 3vw, 2rem);
-            background:
-                linear-gradient(135deg, rgba(255, 248, 232, 0.96), rgba(244, 176, 0, 0.14)),
-                linear-gradient(90deg, rgba(255,255,255,0.7), rgba(255,255,255,0.35));
-            box-shadow: 0 16px 44px rgba(74, 52, 20, 0.08);
-            margin-bottom: 1.4rem;
+            border-top: 1px solid var(--brown);
+            border-bottom: 1px solid var(--line);
+            padding: clamp(2rem, 5vw, 4.5rem) 0 clamp(1.6rem, 4vw, 3rem);
+            margin-bottom: 2rem;
         }
         .mango-hero h1 {
-            font-size: clamp(2.1rem, 6vw, 4rem);
-            line-height: 1;
-            margin: 0 0 0.45rem 0;
+            margin: 0 0 0.8rem 0;
+            max-width: 760px;
         }
         .mango-hero p {
             color: var(--muted);
-            font-size: 1.08rem;
-            max-width: 48rem;
+            font-size: clamp(1rem, 2vw, 1.18rem);
+            line-height: 1.7;
+            max-width: 710px;
             margin: 0;
         }
         .mango-kicker {
-            color: #7a3e00;
-            font-weight: 800;
-            text-transform: uppercase;
+            color: var(--mango-muted);
             font-size: 0.78rem;
-            letter-spacing: 0.08em;
-            margin-bottom: 0.4rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            margin-bottom: 0.8rem;
+            text-transform: uppercase;
         }
-        .metric-card, .mango-card, .empty-state, .gallery-card, .score-panel, .section-panel {
+        .metric-card, .mango-card, .empty-state, .gallery-card, .score-panel, .section-panel, .variety-card {
             background: var(--paper);
-            border: 1px solid rgba(248, 180, 0, 0.28);
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(74, 52, 20, 0.06);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            box-shadow: 0 10px 30px rgba(52, 40, 32, 0.045);
         }
         .metric-card {
-            padding: 1rem;
-            min-height: 112px;
+            min-height: 120px;
+            padding: 1.1rem 1rem;
         }
         .metric-card .label {
             color: var(--muted);
-            font-size: 0.86rem;
-            margin-bottom: 0.35rem;
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.55rem;
+            text-transform: uppercase;
         }
         .metric-card .value {
-            color: var(--ink);
+            color: var(--brown);
             font-size: clamp(1.45rem, 3vw, 2rem);
-            font-weight: 900;
-            line-height: 1.1;
+            font-weight: 650;
+            line-height: 1.15;
         }
         .metric-card .hint {
-            color: #7a3e00;
-            font-size: 0.82rem;
-            margin-top: 0.45rem;
+            border-top: 1px solid rgba(52, 40, 32, 0.10);
+            color: var(--muted);
+            font-size: 0.86rem;
+            margin-top: 0.8rem;
+            padding-top: 0.55rem;
         }
         .mango-card {
-            padding: 1rem;
-            min-height: 190px;
+            min-height: 220px;
+            padding: 1.15rem;
             display: flex;
             flex-direction: column;
-            gap: 0.55rem;
+            gap: 0.7rem;
         }
         .mango-card img {
             width: 100%;
             aspect-ratio: 4 / 3;
             object-fit: cover;
-            border-radius: 6px;
-            margin-bottom: 0.2rem;
+            border-radius: 4px;
+            margin-bottom: 0.4rem;
+            filter: saturate(0.92) contrast(0.98);
         }
         .mango-card .title {
-            color: #7a3e00;
-            font-weight: 900;
-            font-size: 1.08rem;
-            line-height: 1.25;
+            color: var(--brown);
+            font-weight: 650;
+            font-size: 1.12rem;
+            line-height: 1.28;
         }
         .mango-card .meta, .muted {
             color: var(--muted);
             font-size: 0.9rem;
+            line-height: 1.45;
         }
         .mango-card .note {
-            color: #3d3128;
+            color: var(--charcoal);
             margin: 0;
-            line-height: 1.45;
+            line-height: 1.55;
         }
         .score-badge {
             display: inline-flex;
-            align-items: center;
             width: fit-content;
             max-width: 100%;
-            gap: 0.35rem;
-            padding: 0.28rem 0.58rem;
+            padding: 0.28rem 0.62rem;
             border-radius: 999px;
-            font-weight: 850;
-            font-size: 0.83rem;
-            border: 1px solid transparent;
+            font-weight: 650;
+            font-size: 0.8rem;
+            border: 1px solid rgba(52, 40, 32, 0.14);
+            background: #f5efe4;
+            color: var(--brown);
             white-space: normal;
         }
-        .score-legendary {
-            color: #5c3400;
-            background: #ffe8a3;
-            border-color: #f4b000;
+        .score-exceptional {
+            background: #efe0bf;
+            border-color: rgba(177, 127, 41, 0.45);
         }
-        .score-excellent {
-            color: #1f5f2f;
-            background: #dff5df;
-            border-color: #79c56b;
+        .score-excellent, .score-very-good {
+            background: #eee8d8;
         }
-        .score-solid {
-            color: #28505f;
-            background: #d9f2f2;
-            border-color: #78c8c8;
+        .score-good {
+            background: #f4ead7;
         }
-        .score-acceptable {
-            color: #6b4b00;
-            background: #fff1c7;
-            border-color: #e4bd4a;
-        }
-        .score-disappointment {
-            color: #7a1e1e;
-            background: #ffe3df;
-            border-color: #f0a19a;
-        }
-        .score-missing {
-            color: #61564e;
-            background: #f2eee8;
-            border-color: #ddd2c5;
+        .score-fair, .score-disappointing, .score-missing {
+            background: #f1ece6;
+            color: #665a50;
         }
         .empty-state {
-            padding: 1.25rem;
-            text-align: center;
+            padding: 1.4rem;
+            text-align: left;
             color: var(--muted);
         }
-        .empty-state .icon {
-            font-size: 2rem;
-            margin-bottom: 0.35rem;
-        }
         .empty-state strong {
-            color: var(--ink);
+            color: var(--brown);
             display: block;
-            margin-bottom: 0.25rem;
+            font-weight: 650;
+            margin-bottom: 0.35rem;
         }
         .gallery-card {
             overflow: hidden;
-            margin-bottom: 1rem;
+            margin-bottom: 1.15rem;
         }
         .gallery-card img {
             width: 100%;
             aspect-ratio: 4 / 3;
             object-fit: cover;
             display: block;
+            filter: saturate(0.9) contrast(0.98);
         }
         .gallery-card .body {
-            padding: 0.85rem;
+            padding: 0.95rem;
+        }
+        .variety-card {
+            overflow: hidden;
+            margin-bottom: 1.1rem;
+            min-height: 360px;
+        }
+        .variety-card img, .variety-placeholder {
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            display: block;
+        }
+        .variety-card img {
+            object-fit: cover;
+            filter: saturate(0.88) contrast(0.98);
+        }
+        .variety-placeholder {
+            background:
+                linear-gradient(135deg, #f4ecdf, #fbf7ef);
+            border-bottom: 1px solid var(--line);
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 1rem;
+            font-size: 0.78rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        .variety-card .body {
+            padding: 1rem;
+        }
+        .variety-card .name {
+            color: var(--brown);
+            font-weight: 650;
+            font-size: 1.05rem;
+            margin-bottom: 0.45rem;
+        }
+        .variety-card .description {
+            color: var(--charcoal);
+            font-size: 0.92rem;
+            line-height: 1.55;
         }
         .score-panel {
-            padding: 1rem;
-            border-color: rgba(47, 158, 68, 0.26);
-            background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(223,245,223,0.62));
+            padding: 1.15rem;
+            background: #fbf7ef;
         }
         .score-panel .score-number {
             font-size: 2.2rem;
-            font-weight: 900;
+            font-weight: 650;
             line-height: 1;
-            color: #1f5f2f;
+            color: var(--brown);
+            margin: 0.35rem 0;
         }
         .section-panel {
-            padding: 1rem;
-            margin-bottom: 1rem;
+            padding: clamp(1rem, 3vw, 1.35rem);
+            margin-bottom: 1.2rem;
+        }
+        .section-panel h3 {
+            margin-top: 0;
         }
         div[data-testid="stDataFrame"] {
-            border: 1px solid rgba(47, 158, 68, 0.16);
-            border-radius: 8px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+        }
+        .stButton > button {
+            border-radius: 4px;
+            font-weight: 600;
         }
         @media (max-width: 720px) {
             .block-container {
@@ -239,7 +288,7 @@ def show_data_notice(error: str | None, df: pd.DataFrame) -> bool:
         st.warning(error)
         return True
     if df.empty:
-        empty_state("No mango reviews yet", "Add the first tasting note to start the guide.", "🥭")
+        empty_state("No tasting notes yet", "Add the first review to begin the guide.")
         return True
     return False
 
@@ -250,7 +299,7 @@ def page_title(title: str, caption: str | None = None) -> None:
         st.caption(caption)
 
 
-def hero(title: str, subtitle: str, kicker: str = "Public tasting guide") -> None:
+def hero(title: str, subtitle: str, kicker: str = "Private gastronomic guide") -> None:
     st.markdown(
         f"""
         <div class="mango-hero">
@@ -265,25 +314,27 @@ def hero(title: str, subtitle: str, kicker: str = "Public tasting guide") -> Non
 
 def score_label(score: object) -> tuple[str, str]:
     if pd.isna(score):
-        return "No score yet", "score-missing"
+        return "Not scored", "score-missing"
 
     value = float(score)
     if value >= 9.0:
-        return "Legendary Mango", "score-legendary"
+        return "Exceptional", "score-exceptional"
     if value >= 8.0:
         return "Excellent", "score-excellent"
     if value >= 7.0:
-        return "Solid", "score-solid"
+        return "Very Good", "score-very-good"
     if value >= 6.0:
-        return "Acceptable", "score-acceptable"
-    return "Mango Disappointment", "score-disappointment"
+        return "Good", "score-good"
+    if value >= 5.0:
+        return "Fair", "score-fair"
+    return "Disappointing", "score-disappointing"
 
 
 def score_badge(score: object, compact: bool = False) -> str:
     label, class_name = score_label(score)
     score_text = "N/A" if pd.isna(score) else f"{float(score):.1f}"
-    text = score_text if compact else f"Mango Score {score_text} - {label}"
-    return f'<span class="score-badge {class_name}">🥭 {escape(text)}</span>'
+    text = score_text if compact else f"Score {score_text} - {label}"
+    return f'<span class="score-badge {class_name}">{escape(text)}</span>'
 
 
 def metric_card(label: str, value: object, hint: str | None = None) -> None:
@@ -300,11 +351,11 @@ def metric_card(label: str, value: object, hint: str | None = None) -> None:
     )
 
 
-def empty_state(title: str, body: str, icon: str = "🥭") -> None:
+def empty_state(title: str, body: str, icon: str | None = None) -> None:
+    _ = icon
     st.markdown(
         f"""
         <div class="empty-state">
-            <div class="icon">{escape(icon)}</div>
             <strong>{escape(title)}</strong>
             <span>{escape(body)}</span>
         </div>
@@ -314,14 +365,14 @@ def empty_state(title: str, body: str, icon: str = "🥭") -> None:
 
 
 def mango_card(row: pd.Series, rank: int | None = None, show_image: bool = False) -> None:
-    title = row.get("name") or "Untitled mango moment"
+    title = row.get("name") or "Untitled tasting"
     score = row.get("final_score")
     place_bits = [row.get("place_name"), row.get("city"), row.get("country")]
     place = ", ".join(str(bit) for bit in place_bits if pd.notna(bit) and bit)
-    rank_label = f"#{rank} " if rank is not None else ""
+    rank_label = f"No. {rank} " if rank is not None else ""
     image_url = row.get("image_url")
     image_html = ""
-    if show_image and pd.notna(image_url) and str(image_url).strip():
+    if show_image and pd.notna(image_url) and str(image_url).strip() and not _is_local_image_path(str(image_url)):
         image_html = f'<img src="{escape(str(image_url), quote=True)}" alt="{escape(str(title), quote=True)}">'
 
     st.markdown(
@@ -329,10 +380,11 @@ def mango_card(row: pd.Series, rank: int | None = None, show_image: bool = False
         <div class="mango-card">
             {image_html}
             <div class="title">{escape(rank_label + str(title))}</div>
-            <div class="meta">{escape(str(row.get("category") or "Mango"))} · {escape(place or "Somewhere sunny")}</div>
+            <div class="meta">Category: {escape(str(row.get("category") or "Unspecified"))}</div>
+            <div class="meta">Origin: {escape(place or "Not recorded")}</div>
             {score_badge(score)}
-            <p class="note">{escape(str(row.get("short_review") or "No tasting note yet."))}</p>
-            <div class="meta">{escape(str(row.get("reviewer") or "Unknown reviewer"))}</div>
+            <p class="note">{escape(str(row.get("short_review") or "No notes recorded."))}</p>
+            <div class="meta">Tasted by {escape(str(row.get("reviewer") or "Unknown reviewer"))}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -343,10 +395,31 @@ def review_card(row: pd.Series, rank: int | None = None) -> None:
     mango_card(row, rank=rank)
 
 
+def _is_local_image_path(image_url: str) -> bool:
+    return image_url.startswith("uploads/") or image_url.startswith("uploads\\")
+
+
 def gallery_card(row: pd.Series) -> None:
-    title = row.get("name") or "Untitled mango moment"
+    title = row.get("name") or "Untitled tasting"
     image_url = str(row.get("image_url") or "")
     location = " ".join(str(bit) for bit in [row.get("city"), row.get("country")] if pd.notna(bit) and bit)
+
+    if _is_local_image_path(image_url) and Path(image_url).exists():
+        st.image(image_url, use_container_width=True)
+        st.markdown(
+            f"""
+            <div class="gallery-card">
+                <div class="body">
+                    <strong>{escape(str(title))}</strong>
+                    <div style="margin: 0.45rem 0;">{score_badge(row.get("final_score"), compact=True)}</div>
+                    <div class="muted">{escape(location or "Origin not recorded")}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
     st.markdown(
         f"""
         <div class="gallery-card">
@@ -354,7 +427,38 @@ def gallery_card(row: pd.Series) -> None:
             <div class="body">
                 <strong>{escape(str(title))}</strong>
                 <div style="margin: 0.45rem 0;">{score_badge(row.get("final_score"), compact=True)}</div>
-                <div class="muted">{escape(location or "Mango location pending")}</div>
+                <div class="muted">{escape(location or "Origin not recorded")}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _image_data_uri(image_path: Path) -> str | None:
+    if not image_path.exists() or not image_path.is_file():
+        return None
+
+    mime_type = mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def mango_variety_card(name: str, description: str, image_path: str | Path) -> None:
+    path = Path(image_path)
+    image_uri = _image_data_uri(path)
+    if image_uri:
+        media_html = f'<img src="{image_uri}" alt="{escape(name, quote=True)}">'
+    else:
+        media_html = f'<div class="variety-placeholder">{escape(name)}</div>'
+
+    st.markdown(
+        f"""
+        <div class="variety-card">
+            {media_html}
+            <div class="body">
+                <div class="name">{escape(name)}</div>
+                <div class="description">{escape(description)}</div>
             </div>
         </div>
         """,
@@ -363,11 +467,11 @@ def gallery_card(row: pd.Series) -> None:
 
 
 def score_panel(score: float | None) -> None:
-    score_text = "N/A" if score is None else f"{score:.2f}"
+    score_text = "N/A" if score is None else f"{score:.1f}"
     st.markdown(
         f"""
         <div class="score-panel">
-            <div class="muted">Live calculated final score</div>
+            <div class="muted">Calculated score</div>
             <div class="score-number">{escape(score_text)}</div>
             <div>{score_badge(score)}</div>
         </div>
@@ -385,10 +489,10 @@ def filtered_reviews(df: pd.DataFrame) -> pd.DataFrame:
         category = st.selectbox("Category", ["All"] + categories)
     with cols[1]:
         countries = sorted(value for value in filtered["country"].dropna().unique())
-        country = st.selectbox("Country", ["All"] + countries)
+        country = st.selectbox("Origin", ["All"] + countries)
     with cols[2]:
         reviewers = sorted(value for value in filtered["reviewer"].dropna().unique())
-        reviewer = st.selectbox("Reviewer", ["All"] + reviewers)
+        reviewer = st.selectbox("Tasted by", ["All"] + reviewers)
 
     if category != "All":
         filtered = filtered[filtered["category"] == category]

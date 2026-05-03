@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 
-MANGO_COLORS = ["#f8b400", "#ff7a1a", "#2f9e44", "#e8590c", "#0ca678", "#ffd43b"]
+MANGO_COLORS = ["#b88732", "#8f6f4e", "#4f463d", "#c9b89f", "#6f6258", "#d9c79f"]
 
 
 def _empty_figure(message: str) -> go.Figure:
@@ -30,7 +30,7 @@ def country_chart(df: pd.DataFrame) -> go.Figure:
         return _empty_figure("No country data yet.")
     counts = df["country"].fillna("Unknown").value_counts().head(12).reset_index()
     counts.columns = ["country", "reviews"]
-    fig = px.bar(counts, x="reviews", y="country", orientation="h", color="reviews", color_continuous_scale="YlOrBr")
+    fig = px.bar(counts, x="reviews", y="country", orientation="h", color="reviews", color_continuous_scale="Brwnyl")
     fig.update_layout(coloraxis_showscale=False, xaxis_title="Reviews", yaxis_title="", template="plotly_white")
     return fig
 
@@ -61,8 +61,7 @@ def reviewer_chart(df: pd.DataFrame) -> go.Figure:
 def score_distribution(df: pd.DataFrame) -> go.Figure:
     if df.empty or df["final_score"].dropna().empty:
         return _empty_figure("No score data yet.")
-    fig = px.histogram(df, x="final_score", nbins=10, color_discrete_sequence=["#ff922b"])
+    fig = px.histogram(df, x="final_score", nbins=10, color_discrete_sequence=["#b88732"])
     fig.update_layout(xaxis_title="Final score", yaxis_title="Reviews", template="plotly_white")
     fig.update_xaxes(range=[0, 10])
     return fig
-

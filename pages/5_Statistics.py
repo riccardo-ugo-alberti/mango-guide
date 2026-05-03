@@ -7,8 +7,8 @@ from src.db import load_reviews
 from src.ui import configure_page, page_title, show_data_notice
 
 
-configure_page("Mango Stats")
-page_title("Mango Stats", "Patterns from the mango notebook.")
+configure_page("Statistics")
+page_title("Statistics", "A concise view of the guide's tasting data.")
 
 df, error = load_reviews()
 if show_data_notice(error, df):
@@ -25,4 +25,3 @@ with col1:
     st.plotly_chart(reviewer_chart(df), use_container_width=True)
 with col2:
     st.plotly_chart(score_distribution(df), use_container_width=True)
-

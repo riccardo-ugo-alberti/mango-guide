@@ -1,15 +1,15 @@
 # Mango Guide
 
-A playful Streamlit dashboard for collecting and browsing mango experiences around the world: fresh mangoes, gelato, sorbet, desserts, drinks, and anything where mango is the main event.
+A refined Streamlit guide for collecting and browsing mango-led tasting notes around the world: fresh fruit, gelato, sorbet, desserts, drinks, savory dishes, and other mango-focused experiences.
 
 ## Features
 
 - Supabase-backed review browser
-- Homepage summary metrics
-- Ranking page with filters and top 10 cards
+- Editorial homepage summary
+- Rankings page with filters and top tasting cards
 - Coordinate map for reviewed places
 - Password-protected review entry form
-- Image gallery from review image URLs
+- Image gallery from uploaded images or review image URLs
 - Plotly stats by category, country, reviewer, and score distribution
 - Local `.env` support and Streamlit secrets support for deployment
 
@@ -19,6 +19,14 @@ A playful Streamlit dashboard for collecting and browsing mango experiences arou
 app.py
 requirements.txt
 README.md
+assets/
+  mango_varieties/
+    alphonso.jpg
+    kesar.jpg
+    ataulfo.jpg
+    kent.jpg
+    keitt.jpg
+    tommy-atkins.jpg
 src/
   config.py
   db.py
@@ -26,11 +34,12 @@ src/
   charts.py
   ui.py
 pages/
-  1_🏆_Ranking.py
-  2_🗺️_Map.py
-  3_➕_Add_Review.py
-  4_📸_Gallery.py
-  5_📊_Stats.py
+  0_Overview.py
+  1_Rankings.py
+  2_Map.py
+  3_Add_Review.py
+  4_Gallery.py
+  5_Statistics.py
 ```
 
 ## Setup
@@ -95,6 +104,47 @@ create table if not exists public.reviews (
 streamlit run app.py
 ```
 
+## Supabase Storage for Images
+
+The Add Review page supports direct browser uploads. Uploaded images are stored in the existing `reviews.image_url` field after one of these paths is created:
+
+- A public Supabase Storage URL, when the `review-images` bucket is configured.
+- A local `uploads/` path, used as a development fallback if Supabase Storage upload fails or is not available.
+
+To configure Supabase Storage:
+
+1. In Supabase, open Storage.
+2. Create a bucket named `review-images`.
+3. Make the bucket public, or add policies that allow public read access to objects in the bucket.
+4. Ensure the key used by `SUPABASE_KEY` or `SUPABASE_ANON_KEY` can upload objects to that bucket. For a private app, this can be handled with suitable Storage policies or a trusted server-side key.
+
+The app does not require additional environment variables for Storage. It reuses:
+
+```env
+SUPABASE_URL=your-project-url
+SUPABASE_KEY=your-anon-or-service-role-key
+SUPABASE_ANON_KEY=optional-anon-key-fallback
+APP_PASSWORD=choose-a-review-entry-password
+```
+
+For local development fallback uploads, files are written to `uploads/`. That folder is ignored by git.
+
+## Mango Variety Images
+
+The Overview page includes a small editorial guide to mango varieties. Place local images in:
+
+```text
+assets/mango_varieties/
+  alphonso.jpg
+  kesar.jpg
+  ataulfo.jpg
+  kent.jpg
+  keitt.jpg
+  tommy-atkins.jpg
+```
+
+The app uses only these local files for the variety guide. If an image is missing, it renders a refined placeholder card with the variety name.
+
 ## Streamlit Deployment Secrets
 
 In Streamlit Community Cloud or another hosted deployment, add these secrets instead of committing a `.env` file:
@@ -102,6 +152,7 @@ In Streamlit Community Cloud or another hosted deployment, add these secrets ins
 ```toml
 SUPABASE_URL = "your-project-url"
 SUPABASE_KEY = "your-key"
+SUPABASE_ANON_KEY = "optional-anon-key-fallback"
 APP_PASSWORD = "your-password"
 ```
 

@@ -15,7 +15,8 @@ except ImportError:  # pragma: no cover - handled in the UI.
     GeocoderServiceError = GeocoderTimedOut = Exception
     Nominatim = None
 
-from src.db import load_reviews
+from src.config import get_settings
+from src.db import load_reviews, save_review_coordinates
 from src.ui import build_google_maps_url, configure_page, empty_state, page_title, show_data_notice
 
 
@@ -125,6 +126,42 @@ def mapped_reviews(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return pd.DataFrame(mapped_rows), pd.DataFrame(unmapped_rows)
 
 
+def missing_coordinate_reviews(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+
+    missing_lat = ~df["latitude"].apply(has_value)
+    missing_lon = ~df["longitude"].apply(has_value)
+    has_query = df.apply(lambda row: location_query(row) is not None, axis=1)
+    return df[missing_lat & missing_lon & has_query].copy()
+
+
+def refresh_missing_coordinates(df: pd.DataFrame) -> tuple[int, int, list[str]]:
+    saved = 0
+    attempted = 0
+    messages: list[str] = []
+
+    for _, row in missing_coordinate_reviews(df).iterrows():
+        query = location_query(row)
+        review_id = format_value(row.get("id"))
+        if not query or not review_id:
+            continue
+
+        attempted += 1
+        geocoded = geocode_location(query)
+        if geocoded is None:
+            continue
+
+        lat, lon = geocoded
+        ok, message = save_review_coordinates(review_id, lat, lon)
+        if ok:
+            saved += 1
+        else:
+            messages.append(message)
+
+    return attempted, saved, messages
+
+
 def optional_row(label: str, value: object) -> str:
     text = format_value(value)
     if not text:
@@ -191,6 +228,35 @@ if "public" in df.columns:
 
 if Nominatim is None:
     st.warning("Address/city geocoding is unavailable until geopy is installed.")
+
+refresh_col, hint_col = st.columns([0.35, 0.65])
+with refresh_col:
+    refresh_clicked = st.button("Refresh missing coordinates", type="secondary", use_container_width=True)
+with hint_col:
+    st.caption(
+        "This tries to geocode reviews that have Address / Place or City but no saved coordinates, "
+        "then saves successful results for more reliable deployment maps."
+    )
+
+if refresh_clicked:
+    if Nominatim is None:
+        st.warning("Coordinates cannot be refreshed because geopy is not installed.")
+    elif not get_settings().has_admin_credentials:
+        st.warning(
+            "Coordinates cannot be saved automatically because SUPABASE_SERVICE_ROLE_KEY is missing."
+        )
+    else:
+        with st.spinner("Geocoding missing review locations..."):
+            attempted, saved, messages = refresh_missing_coordinates(df)
+        if saved:
+            st.success(f"Saved coordinates for {saved} review{'s' if saved != 1 else ''}.")
+            st.rerun()
+        if attempted == 0:
+            st.info("No reviews need automatic coordinates right now.")
+        elif saved == 0:
+            st.info("No new coordinates were found.")
+        if messages:
+            st.warning(messages[0])
 
 map_df, not_mapped_df = mapped_reviews(df)
 

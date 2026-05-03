@@ -151,8 +151,13 @@ Reviews are mapped in two ways:
 
 Automatic placement uses Nominatim through `geopy`, requires no Google Maps API
 key, and may be approximate. Manual coordinates are preferred for best accuracy.
-The app caches geocoding results and does not write geocoded coordinates back to
-the database automatically.
+The app caches geocoding results for display. The Map page also includes a
+"Refresh missing coordinates" button that geocodes reviews with missing
+coordinates and saves successful latitude/longitude results back to Supabase
+with the service role key. Saved coordinates are preferred for Streamlit Cloud
+and other deployments because they avoid repeated geocoding during page loads.
+The refresh action only writes coordinates when both latitude and longitude are
+currently missing; it does not overwrite manually entered coordinates.
 
 To add coordinates manually:
 

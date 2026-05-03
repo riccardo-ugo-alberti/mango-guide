@@ -289,6 +289,28 @@ def delete_review(review_id: str) -> tuple[bool, str]:
         return False, _human_error(exc, "delete review")
 
 
+def save_review_coordinates(review_id: str, latitude: float, longitude: float) -> tuple[bool, str]:
+    client = get_admin_supabase_client()
+    if client is None:
+        return False, "Coordinates cannot be saved automatically because SUPABASE_SERVICE_ROLE_KEY is missing."
+
+    try:
+        response = (
+            client.table("reviews")
+            .update({"latitude": latitude, "longitude": longitude})
+            .eq("id", review_id)
+            .is_("latitude", "null")
+            .is_("longitude", "null")
+            .execute()
+        )
+        _load_reviews_cached.clear()
+        if not response.data:
+            return False, "Coordinates were not saved because this review already has coordinates."
+        return True, "Coordinates saved."
+    except Exception as exc:
+        return False, _human_error(exc, "save coordinates")
+
+
 def _safe_upload_name(filename: str) -> str:
     suffix = Path(filename).suffix.lower()
     if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
